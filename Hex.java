@@ -19,6 +19,7 @@ public class Hex {
 			char c = (char)(i > 9 ? ('A' + i - 10) : ('0' + i));
 			List<Board> boards = new ArrayList<>();
 			allBoards.add(boards);
+			allParts.add(new ArrayList<>());
 
 			// Find left-most and top-most occurrence of the character
 			int minIndex = Byte.MAX_VALUE, minRow = -1;
@@ -117,6 +118,8 @@ public class Hex {
 		}
 
 		// Find all possible tilings of the shape
+		long start = System.currentTimeMillis();
+		int shapeTilings = 0;
 		for (byte i = 0; i < freeCount; i++) {
 			for (byte j = (byte)(i + 1); j < freeCount; j++) {
 				for (byte k = (byte)(j + 1); k < freeCount; k++) {
@@ -130,74 +133,39 @@ public class Hex {
 								bitSet.set(k);
 								bitSet.set(l);
 								bitSet.set(m);
-								allParts.add(bitSet);
+								allParts.get(i).add(bitSet);
+								allParts.get(j).add(bitSet);
+								allParts.get(k).add(bitSet);
+								allParts.get(l).add(bitSet);
+								allParts.get(m).add(bitSet);
+								System.out.println(i + " " + j + " " + k + " " + l + " " + m);
+								shapeTilings++;
 							}
 						}
 					}
 				}
 			}
 		}
-		System.out.println("There are " + allParts.size() + " possible shape tilings");
+		System.out.println("There are " + shapeTilings + " possible shape tilings (found in "
+				+ (System.currentTimeMillis() - start) / 1000 + " seconds)");
 
 		// Try to cover the entire range 0 .. 34 with parts for which a shape tiling exists
-		for (int i = 0; i < allParts.size(); i++) {
-			BitSet bitSetAfter0 = (BitSet)allParts.get(i).clone();
-			for (int j = i + 1; j < allParts.size(); j++) {
-				if (allParts.get(j).intersects(bitSetAfter0))
-					continue;
-				BitSet bitSetAfter1 = (BitSet)bitSetAfter0.clone();
-				bitSetAfter1.or(allParts.get(j));
-				for (int k = j + 1; k < allParts.size(); k++) {
-					if (allParts.get(k).intersects(bitSetAfter1))
-						continue;
-					BitSet bitSetAfter2 = (BitSet)bitSetAfter1.clone();
-					bitSetAfter2.or(allParts.get(k));
-					for (int l = k + 1; l < allParts.size(); l++) {
-						if (allParts.get(l).intersects(bitSetAfter2))
-							continue;
-						BitSet bitSetAfter3 = (BitSet)bitSetAfter2.clone();
-						bitSetAfter3.or(allParts.get(l));
-						for (int m = l + 1; m < allParts.size(); m++) {
-							if (allParts.get(m).intersects(bitSetAfter3))
-								continue;
-							BitSet bitSetAfter4 = (BitSet)bitSetAfter3.clone();
-							bitSetAfter4.or(allParts.get(m));
-							for (int n = m + 1; n < allParts.size(); n++) {
-								if (allParts.get(n).intersects(bitSetAfter4))
-									continue;
-								BitSet bitSetAfter5 = (BitSet)bitSetAfter4.clone();
-								bitSetAfter5.or(allParts.get(n));
-								for (int o = n + 1; o < allParts.size(); o++) {
-									if (!allParts.get(o).intersects(bitSetAfter5)) {
-										// Complete tiling found, print it
-										System.out.println(allParts.get(i));
-										findTiling(allParts.get(i).toByteArray(), true);
-										System.out.println(allParts.get(j));
-										findTiling(allParts.get(j).toByteArray(), true);
-										System.out.println(allParts.get(k));
-										findTiling(allParts.get(k).toByteArray(), true);
-										System.out.println(allParts.get(l));
-										findTiling(allParts.get(l).toByteArray(), true);
-										System.out.println(allParts.get(m));
-										findTiling(allParts.get(m).toByteArray(), true);
-										System.out.println(allParts.get(n));
-										findTiling(allParts.get(n).toByteArray(), true);
-										System.out.println(allParts.get(o));
-										findTiling(allParts.get(o).toByteArray(), true);
-									}
-								}
-							}
-						}
-					}
-				}
-			}
+		start = System.currentTimeMillis();
+		int step = 0, nextNumber = 0;
+		for (BitSet part : allParts.get(nextNumber)) {
+			usedBitSets[step] = part;
+			BitSet nextBitSet = (BitSet)part.clone();
+			// Find next not-covered number
+			nextCoverStep(nextBitSet, nextNumber, step + 1);
 		}
+		System.out.println("Cover search completed in " + (System.currentTimeMillis() - start) / 1000 + " seconds");
 	}
 
 	private static final int freeCount = 35; // found on Wikipedia
 	private static List<List<Board>> allBoards = new ArrayList<>();
 
-	private static List<BitSet> allParts = new ArrayList<>();
+	private static List<List<BitSet>> allParts = new ArrayList<>();
+	private static BitSet[] usedBitSets = new BitSet[7];
 
 	private static boolean findTiling(byte[] tileNumbers, boolean showBoards) {
 		for (Board board0 : allBoards.get(tileNumbers[0])) {
@@ -247,6 +215,36 @@ public class Hex {
 			// Shift right
 			newBoard = newBoard.shiftRight();
 		}
+	}
+
+	private static void nextCoverStep(BitSet currentBitSet, int currentNumber, int step) {
+		int nextNumber = currentBitSet.nextClearBit(currentNumber + 1);
+		if (nextNumber == freeCount) {
+			// Complete tiling found, print it
+			for (int i = 0; i < 7; i++) {
+				System.out.println(usedBitSets[i]);
+				findTiling(getIndices(usedBitSets[i]), true);
+			}
+			return;
+		}
+		// Try all parts (for which a tiling has been found) containing the next free number
+		for (BitSet part : allParts.get(nextNumber)) {
+			if (part.intersects(currentBitSet))
+				continue;
+			usedBitSets[step] = part;
+			BitSet nextBitSet = (BitSet)currentBitSet.clone();
+			nextBitSet.or(part);
+			nextCoverStep(nextBitSet, nextNumber, step + 1);
+		}
+	}
+
+	private static byte[] getIndices(BitSet bitSet) {
+		byte[] indices = new byte[5];
+		int k = 0;
+		for (int j = bitSet.nextSetBit(0); j != -1; j = bitSet.nextSetBit(j + 1)) {
+			indices[k++] = (byte)j;
+		}
+		return indices;
 	}
 
 	/**
